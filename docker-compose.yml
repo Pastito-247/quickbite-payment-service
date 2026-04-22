@@ -1,0 +1,46 @@
+version: '3.8'
+services:
+  mysql-payment:
+    image: mysql:8.0
+    container_name: quickbite-payment-db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: quickbite_payment_db
+      MYSQL_USER: payment_user
+      MYSQL_PASSWORD: payment_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - payment-db-data:/var/lib/mysql
+    networks:
+      - quickbite-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "payment_user", "-ppayment_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quickbite-payment-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-payment:3306/quickbite_payment_db
+      SPRING_DATASOURCE_USERNAME: payment_user
+      SPRING_DATASOURCE_PASSWORD: payment_password
+    depends_on:
+      mysql-payment:
+        condition: service_healthy
+    networks:
+      - quickbite-network
+    restart: unless-stopped
+
+volumes:
+  payment-db-data:
+
+networks:
+  quickbite-network:
+    driver: bridge
