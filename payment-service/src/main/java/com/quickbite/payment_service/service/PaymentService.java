@@ -27,6 +27,7 @@ public class PaymentService {
     private final PaymentGatewayFactory paymentGatewayFactory;
     private final WalletService walletService;
     private final TransactionService transactionService;
+    private final TrackingIdGenerator trackingIdGenerator;
 
     @CircuitBreaker(name = "paymentGateway", fallbackMethod = "processPaymentFallback")
     @Transactional
@@ -59,6 +60,7 @@ public class PaymentService {
                 .status(gatewayResponse.getStatus())
                 .paymentMethod(request.getPaymentMethod())
                 .transactionId(gatewayResponse.getTransactionId())
+                .trackingId(trackingIdGenerator.generateTrackingId())
                 .build();
 
         Payment savedPayment = paymentRepository.save(payment);
@@ -164,6 +166,7 @@ public class PaymentService {
                 .status(payment.getStatus())
                 .paymentMethod(payment.getPaymentMethod())
                 .transactionId(payment.getTransactionId())
+                .trackingId(payment.getTrackingId())
                 .createdAt(payment.getCreatedAt())
                 .build();
     }

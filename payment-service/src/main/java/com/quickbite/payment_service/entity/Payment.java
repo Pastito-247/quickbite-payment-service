@@ -40,6 +40,9 @@ public class Payment {
 
     private String transactionId;
 
+    @Column(name = "tracking_id", unique = true, nullable = false)
+    private String trackingId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
