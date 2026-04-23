@@ -17,5 +17,6 @@ public class PaymentResponse {
     private PaymentStatus status;
     private String paymentMethod;
     private String transactionId;
+    private String trackingId;
     private LocalDateTime createdAt;
 }
