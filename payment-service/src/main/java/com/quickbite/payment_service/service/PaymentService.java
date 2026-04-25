@@ -8,19 +8,23 @@ import com.quickbite.payment_service.enums.TransactionStatus;
 import com.quickbite.payment_service.enums.TransactionType;
 import com.quickbite.payment_service.exception.PaymentProcessingException;
 import com.quickbite.payment_service.exception.ResourceNotFoundException;
+import com.quickbite.payment_service.client.OrderClient;
 import com.quickbite.payment_service.factory.PaymentGatewayFactory;
 import com.quickbite.payment_service.gateway.PaymentGateway;
 import com.quickbite.payment_service.repository.PaymentRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
@@ -28,6 +32,7 @@ public class PaymentService {
     private final WalletService walletService;
     private final TransactionService transactionService;
     private final TrackingIdGenerator trackingIdGenerator;
+    private final OrderClient orderClient;
 
     @CircuitBreaker(name = "paymentGateway", fallbackMethod = "processPaymentFallback")
     @Transactional
@@ -73,6 +78,30 @@ public class PaymentService {
                 "Pago procesado para orden " + request.getOrderId(),
                 TransactionStatus.SUCCESS
         );
+
+        // Notificar al servicio de pedidos sobre el pago
+        try {
+            Map<String, Object> paymentInfo = Map.of(
+                "paymentId", savedPayment.getId(),
+                "transactionId", savedPayment.getTransactionId(),
+                "trackingId", savedPayment.getTrackingId(),
+                "status", savedPayment.getStatus().toString(),
+                "amount", savedPayment.getAmount(),
+                "paymentMethod", savedPayment.getPaymentMethod()
+            );
+
+            if (savedPayment.getStatus() == PaymentStatus.COMPLETED) {
+                orderClient.confirmPayment(request.getOrderId(), paymentInfo);
+            } else if (savedPayment.getStatus() == PaymentStatus.PENDING) {
+                orderClient.updateOrderStatus(request.getOrderId(), Map.of(
+                    "status", "PAYMENT_PENDING",
+                    "paymentId", savedPayment.getId()
+                ));
+            }
+        } catch (Exception e) {
+            log.error("Error notifying order service about payment: {}", e.getMessage());
+            // No fallar el pago si la notificación falla
+        }
 
         return mapToResponse(savedPayment);
     }
@@ -145,16 +174,31 @@ public class PaymentService {
     }
 
     private String extractUserIdFromRequest(PaymentRequest request) {
-        // En producción, esto se obtendría del token JWT o de los detalles del pago
+        // Primero intentar obtener del request
         if (request.getPaymentDetails() != null && request.getPaymentDetails().containsKey("userId")) {
             return request.getPaymentDetails().get("userId").toString();
         }
-        throw new IllegalArgumentException("ID de usuario no proporcionado para pago con billetera");
+        
+        // Si no está en el request, lanzar excepción para que el controller lo inyecte desde el contexto
+        throw new IllegalArgumentException("ID de usuario no proporcionado para pago con billetera. " +
+                "Debe incluirse en el request o estar disponible en el contexto de seguridad.");
     }
 
     private String extractUserIdFromPayment(Payment payment) {
-        // En producción, esto se obtendría del servicio de pedidos o de los metadatos
-        throw new UnsupportedOperationException("Funcionalidad no implementada: obtener userId del pago");
+        // Para reembolsos, necesitamos obtener el userId del pedido original
+        try {
+            // Intentar obtener del servicio de pedidos usando el orderId
+            if (payment.getOrderId() != null) {
+                // Esto debería ser implementado con comunicación real al Order Service
+                // Por ahora, devolvemos un placeholder
+                log.warn("Using placeholder userId for payment refund. Implement real Order Service integration.");
+                return "PLACEHOLDER_USER_ID";
+            }
+            throw new IllegalArgumentException("No se puede determinar el usuario para el reembolso");
+        } catch (Exception e) {
+            log.error("Error extracting userId from payment: {}", e.getMessage());
+            throw new RuntimeException("No se puede procesar el reembolso sin información del usuario");
+        }
     }
 
     private PaymentResponse mapToResponse(Payment payment) {

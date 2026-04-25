@@ -6,6 +6,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 @Builder
@@ -19,4 +20,5 @@ public class PaymentResponse {
     private String transactionId;
     private String trackingId;
     private LocalDateTime createdAt;
+    private Map<String, Object> additionalInfo;
 }
